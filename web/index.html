@@ -676,7 +676,7 @@ async function renderBackup(main) {
     provTable.innerHTML = '';
     fromSel.innerHTML = ''; toSel.innerHTML = '';
     try {
-      const { providers } = await GET('/providers');
+      const { providers = [] } = await GET('/providers');
       if (!providers.length) {
         provTable.appendChild(el('div',{class:'text-muted text-sm'},'未发现任何会话'));
         return;
@@ -700,7 +700,10 @@ async function renderBackup(main) {
       if (providers.some(p=>p.provider==='custom')) toSel.value='custom';
       tbl.appendChild(tbody);
       provTable.appendChild(tbl);
-    } catch(e) { toast('加载 provider 失败: '+e.message,'error'); }
+    } catch(e) {
+      provTable.appendChild(el('div',{class:'text-sm',style:'color:var(--red)'},'加载失败: '+e.message));
+      toast('加载 provider 失败: '+e.message,'error');
+    }
   }
   loadProviders();
 

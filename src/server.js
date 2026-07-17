@@ -42,7 +42,9 @@ export async function startServer(cfg, log, { openBrowser = true } = {}) {
     res.json({ ok: true, codex_running, version: '0.1.0' });
   });
 
-  // ── 404 fallback (SPA) ────────────────────────────────────────────────────
+  // ── 404 fallback ──────────────────────────────────────────────────────────
+  // API 路径必须返回 JSON 404，不能落到 SPA fallback 返回 HTML
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint not found (server may be outdated — restart cxsync serve)' }));
   app.use((_req, res) => res.sendFile(resolve(WEB_DIR, 'index.html')));
 
   // ── error handler ─────────────────────────────────────────────────────────
