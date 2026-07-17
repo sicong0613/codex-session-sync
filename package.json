@@ -1,0 +1,32 @@
+{
+  "name": "codex-session-sync",
+  "version": "0.1.0",
+  "description": "Local Codex session sync with WebDAV support and Web GUI",
+  "bin": {
+    "cxsync": "./bin/cxsync.js"
+  },
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node bin/cxsync.js serve",
+    "dev": "node bin/cxsync.js serve --port 7420",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "commander": "^12.1.0",
+    "webdav": "^5.7.1",
+    "js-yaml": "^4.1.0",
+    "chokidar": "^3.6.0",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "webdav-server": "^2.6.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["codex", "session", "sync", "webdav", "backup"],
+  "license": "MIT"
+}

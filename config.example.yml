@@ -1,0 +1,34 @@
+codex_home: ~/.codex
+machine_id: my-machine
+
+sync:
+  mode: cold
+  direction: bidirectional
+  compare: mtime
+  time_tolerance_seconds: 2
+  equal_mtime_action: skip
+  delete_policy: never
+  session_mode: last_date_only
+
+conflict:
+  policy: manual_abort
+
+backup:
+  enabled: true
+  compression: none
+  retention_days: 30
+  max_backups: 0
+
+webdav:
+  url: https://your-webdav-server/remote.php/dav/files/username
+  username: your_username
+  password: your_password
+  remote_path: /codex-sync
+
+server:
+  port: 7420
+  open_browser: true
+
+logging:
+  level: INFO
+  file: ~/.codex-session-sync/logs/sync.log
