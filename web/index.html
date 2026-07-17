@@ -418,11 +418,32 @@ async function renderSessions(main) {
       nameCell.style.cursor = 'text';
       nameCell.ondblclick = startEdit;
 
+      const delBtn = el('button',{class:'btn btn-danger btn-sm', onclick: async () => {
+        if (!confirm(`确定删除会话「${s.thread_name || s.id}」吗？\n\n· 需要先关闭 Codex\n· 将同时删除会话文件、索引条目和数据库记录\n· 此操作不可撤销（建议先创建备份）`)) return;
+        delBtn.disabled = true;
+        try {
+          await api('DELETE', '/sessions/' + s.id);
+          toast('会话已删除', 'success');
+          // 从本地数据源移除并重建视图
+          const arr = byProject[s.project || '(unknown)'];
+          if (arr) {
+            const i = arr.indexOf(s);
+            if (i !== -1) arr.splice(i, 1);
+          }
+          buildTable(); buildSidebar();
+        } catch(e) {
+          toast('删除失败: ' + e.message, 'error');
+          delBtn.disabled = false;
+        }
+      }}, '🗑 删除');
+
       const row = el('tr',{},
         nameCell,
         el('td',{class:'text-muted text-sm'}, s.id.slice(0,8)+'…'),
         el('td',{class:'text-muted'}, fmtDate(s.updated_at)),
-        el('td',{}, el('button',{class:'btn btn-ghost btn-sm', onclick:startEdit}, '✏️ 重命名')),
+        el('td',{}, el('div',{class:'flex gap-8'},
+          el('button',{class:'btn btn-ghost btn-sm', onclick:startEdit}, '✏️ 重命名'),
+          delBtn)),
       );
       tbody.appendChild(row);
     });
