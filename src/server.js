@@ -26,12 +26,14 @@ export async function startServer(cfg, log, { openBrowser = true } = {}) {
   const { router: backupRouter }  = await import('./api/backup.js');
   const { router: webdavRouter }  = await import('./api/webdav.js');
   const { router: configRouter }  = await import('./api/config.js');
+  const { router: mergeRouter }   = await import('./api/merge.js');
 
   app.use('/api/sessions', sessionRouter);
   app.use('/api/sync',     syncRouter);
   app.use('/api',          backupRouter);
   app.use('/api/config',   webdavRouter);
   app.use('/api/config',   configRouter);
+  app.use('/api',          mergeRouter);
 
   // ── health ────────────────────────────────────────────────────────────────
   app.get('/api/health', async (_req, res) => {

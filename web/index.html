@@ -641,6 +641,76 @@ async function renderBackup(main) {
   }
   main.appendChild(listCard);
 
+  // ── provider merge card ──────────────────────────────────────────────────
+  const mergeCard = el('div',{class:'card mb-16'});
+  mergeCard.appendChild(el('div',{class:'card-title'},'会话合并（登录方式隔离）'));
+  mergeCard.appendChild(el('div',{class:'text-muted text-sm mb-12'},
+    'Codex 按登录方式隔离会话列表：openai = ChatGPT 页面授权登录，custom = API key 登录。可将一方的会话合并到另一方，使其在同一列表中可见。'));
+
+  const provTable = el('div',{class:'mb-12'});
+  const fromSel = el('select',{style:'max-width:180px'});
+  const toSel = el('select',{style:'max-width:180px'});
+
+  async function loadProviders() {
+    provTable.innerHTML = '';
+    fromSel.innerHTML = ''; toSel.innerHTML = '';
+    try {
+      const { providers } = await GET('/providers');
+      if (!providers.length) {
+        provTable.appendChild(el('div',{class:'text-muted text-sm'},'未发现任何会话'));
+        return;
+      }
+      const tbl = el('table',{});
+      tbl.appendChild(el('thead',{},el('tr',{},
+        el('th',{},'登录方式 (provider)'),el('th',{},'会话文件数'),el('th',{},'数据库线程数')
+      )));
+      const tbody = el('tbody',{});
+      providers.forEach(p => {
+        tbody.appendChild(el('tr',{},
+          el('td',{}, el('span',{class:'badge '+(p.provider==='openai'?'badge-green':'badge-blue')}, p.provider)),
+          el('td',{class:'text-muted'}, String(p.rollout_count)),
+          el('td',{class:'text-muted'}, String(p.db_count)),
+        ));
+        fromSel.appendChild(el('option',{value:p.provider}, p.provider));
+        toSel.appendChild(el('option',{value:p.provider}, p.provider));
+      });
+      // 默认 from=openai → to=custom（常见方向）
+      if (providers.some(p=>p.provider==='openai')) fromSel.value='openai';
+      if (providers.some(p=>p.provider==='custom')) toSel.value='custom';
+      tbl.appendChild(tbody);
+      provTable.appendChild(tbl);
+    } catch(e) { toast('加载 provider 失败: '+e.message,'error'); }
+  }
+  loadProviders();
+
+  const mergeResult = el('div',{class:'text-sm mt-8'});
+  const previewBtn = el('button',{class:'btn btn-ghost btn-sm', onclick: async () => {
+    try {
+      const r = await POST('/merge', { from: fromSel.value, to: toSel.value, dry_run: true });
+      mergeResult.innerHTML = `<span class="badge badge-yellow">预览</span> ${r.from} → ${r.to}：会话文件 ${r.rollouts_changed} 个，数据库线程 ${r.db_rows_changed} 条`;
+    } catch(e) { toast('预览失败: '+e.message,'error'); }
+  }}, '预览合并');
+
+  const mergeBtn = el('button',{class:'btn btn-sm', onclick: async () => {
+    if (fromSel.value === toSel.value) { toast('源和目标不能相同','error'); return; }
+    if (!confirm(`确定将 ${fromSel.value} 的所有会话合并到 ${toSel.value} 吗？\n\n· 需要先关闭 Codex\n· 合并前会自动创建备份快照\n· 会改写会话文件和数据库`)) return;
+    mergeBtn.disabled = true; mergeBtn.textContent = '合并中…';
+    try {
+      const r = await POST('/merge', { from: fromSel.value, to: toSel.value, dry_run: false });
+      mergeResult.innerHTML = `<span class="badge badge-green">已合并</span> 会话文件 ${r.rollouts_changed} 个，数据库线程 ${r.db_rows_changed} 条（已自动备份）`;
+      toast('合并完成','success');
+      loadProviders();
+    } catch(e) { toast('合并失败: '+e.message,'error'); }
+    finally { mergeBtn.disabled=false; mergeBtn.textContent='执行合并'; }
+  }}, '执行合并');
+
+  const mergeRow = el('div',{class:'flex items-center gap-8'},
+    el('span',{class:'text-sm text-muted'},'将'), fromSel,
+    el('span',{class:'text-sm text-muted'},'合并到'), toSel,
+    previewBtn, mergeBtn);
+  mergeCard.append(provTable, mergeRow, mergeResult);
+  main.appendChild(mergeCard);
+
   // restore progress card
   const restoreCard = el('div',{class:'card',style:'display:none'});
   restoreCard.appendChild(el('div',{class:'card-title'},'恢复进度'));

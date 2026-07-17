@@ -162,6 +162,61 @@ program
     list.forEach(s => console.log(`[${(s.updated_at || '').slice(0, 10)}] ${(s.project || '(unknown)').padEnd(20)} ${s.thread_name || s.id}`));
   });
 
+// ── merge-providers ─────────────────────────────────────────────────────────
+program
+  .command('merge-providers')
+  .description('Merge sessions from one login provider into another (openai = ChatGPT web login, custom = API key)')
+  .option('--list', 'list providers and session counts')
+  .option('--from <provider>', 'source provider, e.g. openai')
+  .option('--to <provider>', 'target provider, e.g. custom')
+  .option('--dry-run', 'preview only')
+  .option('--apply', 'rewrite rollout files and state db')
+  .action(async (opts) => {
+    const cfg = getConfig(program);
+    const log = makeLogger(cfg, program);
+    const { listProviders, mergeProviders } = await import('../src/merge.js');
+
+    if (opts.list || (!opts.from && !opts.to)) {
+      const { providers } = await listProviders(cfg.codex_home);
+      console.log('provider        rollouts  db_threads');
+      for (const p of providers) {
+        console.log(`${p.provider.padEnd(15)} ${String(p.rollout_count).padStart(8)}  ${String(p.db_count).padStart(10)}`);
+      }
+      return;
+    }
+
+    if (!opts.apply && !opts.dryRun) {
+      console.error('Specify --dry-run or --apply'); process.exit(1);
+    }
+
+    if (opts.apply) {
+      const { isCodexRunning } = await import('../src/process-check.js');
+      if (await isCodexRunning()) {
+        log.error('Codex is running — close it before merging');
+        process.exit(3);
+      }
+      // 改写前自动备份 sessions + sqlite
+      const { createSnapshot } = await import('../src/backup.js');
+      const snap = await createSnapshot({
+        sourceDir: cfg.codex_home,
+        backupDir: cfg.backup_dir,
+        compression: cfg.backup.compression,
+        include: ['sessions', 'session_index.jsonl', 'state_5.sqlite'],
+      });
+      log.info(`Pre-merge backup: ${snap}`);
+    }
+
+    const result = await mergeProviders({
+      codexHome: cfg.codex_home,
+      from: opts.from, to: opts.to,
+      dryRun: !opts.apply,
+    });
+    console.log(opts.apply ? 'Merged:' : 'DRY RUN — would merge:');
+    console.log(`  rollout files: ${result.rollouts_changed}`);
+    console.log(`  db threads:    ${result.db_rows_changed}`);
+    if (result.files.length) result.files.forEach(f => console.log(`  - ${f}`));
+  });
+
 // ── serve ────────────────────────────────────────────────────────────────────
 program
   .command('serve')
