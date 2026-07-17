@@ -1,7 +1,15 @@
 {
   "name": "codex-session-sync",
   "version": "0.1.0",
-  "description": "Local Codex session sync with WebDAV support and Web GUI",
+  "description": "Sync, back up, and manage local OpenAI Codex sessions across machines via WebDAV, with CLI and Web GUI",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shonngithub/codex-session-sync.git"
+  },
+  "homepage": "https://github.com/shonngithub/codex-session-sync#readme",
+  "bugs": {
+    "url": "https://github.com/shonngithub/codex-session-sync/issues"
+  },
   "bin": {
     "cxsync": "./bin/cxsync.js"
   },

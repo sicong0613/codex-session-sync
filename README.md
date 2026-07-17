@@ -1,150 +1,162 @@
 # codex-session-sync
 
-本地 Codex 会话同步工具：通过 WebDAV 协议在多台机器间同步 `~/.codex` 状态，并提供 Web GUI 管理界面。
+[中文文档](./README_CN.md)
 
-## 功能
+Sync, back up, and manage local [OpenAI Codex](https://github.com/openai/codex) sessions across machines — via any WebDAV server, with a CLI and a local Web GUI.
 
-- **会话同步**：通过 WebDAV（Nextcloud/坚果云/Synology/任意 WebDAV 服务器）同步 Codex 会话、技能、插件
-- **Web GUI**：浏览器管理界面，支持会话浏览、在线重命名、同步进度、备份恢复
-- **备份恢复**：同步前自动备份，支持一键恢复到任意快照
-- **安全优先**：同步前检测 Codex 进程，仅在 Codex 关闭后执行，备份后再覆盖
-- **冲突策略**：`manual_abort` / `prefer_local` / `prefer_cloud` / `prefer_newer_mtime`
-- **跨平台**：Windows 优先，兼容 macOS/Linux
+## Why
 
-## 快速开始
+Codex (CLI / Desktop / IDE extension) keeps all conversation state in a local `~/.codex` directory. If you work on more than one machine, your sessions don't follow you. codex-session-sync moves them safely:
 
-### 安装
+- **Cold sync** — only runs when Codex is closed, so state files are never corrupted mid-write
+- **Backup before overwrite** — every destructive step snapshots first
+- **Local-first** — your data goes only to the WebDAV server you configure; no third-party service, no telemetry
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| WebDAV sync | Bidirectional sync of sessions / skills / plugins with Nextcloud, Synology, Koofr, or any WebDAV server |
+| Web GUI | Dashboard, session browser, sync progress (SSE live stream), backup management — at `http://localhost:7420` |
+| Session management | Browse by project, search, rename (syncs back into Codex's own UI), delete (cleans all three Codex stores) |
+| Provider merge | Merge sessions isolated between ChatGPT web login (`openai`) and API-key login (`custom`) into one visible list |
+| Backup & restore | Timestamped snapshots, one-click restore, retention pruning, delete |
+| Conflict policies | `manual_abort` / `prefer_local` / `prefer_cloud` / `prefer_newer_mtime` |
+| Safety guards | Codex process detection, atomic writes (tmp + rename), path-traversal protection, pre-merge/pre-restore auto-backup |
+
+## Requirements
+
+- Node.js **≥ 22.5** (uses built-in `node:sqlite`; sync/backup alone works on ≥ 18)
+- Codex CLI or Codex Desktop installed (a `~/.codex` directory exists)
+- Windows / macOS / Linux (Windows is the most battle-tested)
+
+## Installation
 
 ```bash
-git clone <repo>
+git clone https://github.com/shonngithub/codex-session-sync.git
 cd codex-session-sync
 npm install
-```
 
-全局安装（可选）：
-
-```bash
+# optional: install the `cxsync` command globally
 npm install -g .
 ```
 
-### 初始化配置
+## Quick start
 
 ```bash
+# 1. Generate config at ~/.codex-session-sync/config.yml
 cxsync init-config
-# 配置文件生成在 ~/.codex-session-sync/config.yml
-```
 
-编辑配置，填入你的 WebDAV 信息：
+# 2. Edit the config — fill in your WebDAV credentials
+#    webdav:
+#      url: https://your-server/remote.php/dav/files/username
+#      username: your_username
+#      password: your_password
+#      remote_path: /codex-sync
 
-```yaml
-webdav:
-  url: https://your-nextcloud.com/remote.php/dav/files/username
-  username: your_username
-  password: your_password
-  remote_path: /codex-sync
-```
+# 3. Check everything is ready
+cxsync doctor
 
-### 启动 Web GUI
-
-```bash
+# 4. Start the Web GUI (opens browser automatically)
 cxsync serve
-# 浏览器自动打开 http://localhost:7420
 ```
 
-## CLI 命令
-
-```
-cxsync init-config [--output <path>] [--force]   生成配置文件
-cxsync validate                                   验证配置
-cxsync doctor                                     预检诊断
-cxsync plan                                       预览同步计划（不写文件）
-cxsync sync --dry-run                             模拟同步
-cxsync sync --apply                               执行同步
-cxsync restore --dry-run                          模拟恢复
-cxsync restore --apply                            执行恢复（默认取最新快照）
-cxsync restore --from <snapshot> --apply          恢复指定快照
-cxsync sessions                                   列出本地会话
-cxsync serve [--port 7420] [--no-open]            启动 Web GUI
-```
-
-## 典型工作流
-
-**机器 A → 机器 B 的会话交接：**
+Or go CLI-only:
 
 ```bash
-# 1. 在机器 A 上，关闭 Codex
-# 2. 执行同步
-cxsync sync --apply
-
-# 3. 等待 WebDAV 云端同步完成（OneDrive/Dropbox/Nextcloud 等）
-
-# 4. 在机器 B 上，关闭 Codex
-# 5. 执行同步
-cxsync sync --apply
-
-# 6. 重新打开 Codex，会话已同步
+cxsync sync --dry-run   # preview
+cxsync sync --apply     # sync for real
 ```
 
-## Web GUI 功能
+## CLI reference
 
-| 页面 | 功能 |
-|------|------|
-| Dashboard | 运行状态、会话统计、快捷操作 |
-| 会话管理 | 按项目分组浏览、搜索、双击重命名 |
-| 同步 | WebDAV 连接测试、同步计划预览、实时进度 |
-| 备份恢复 | 备份列表、立即备份、快照恢复 |
+```
+cxsync init-config [--output <path>] [--force]     Generate config file
+cxsync validate                                    Validate config
+cxsync doctor                                      Preflight diagnostics
+cxsync plan                                        Show sync plan (read-only)
+cxsync sync --dry-run | --apply                    Sync local <-> WebDAV
+cxsync restore [--from <snapshot>] --apply         Restore from backup
+cxsync sessions [--project <name>]                 List local sessions
+cxsync merge-providers --list                      Show sessions per login provider
+cxsync merge-providers --from openai --to custom --apply   Merge providers
+cxsync serve [--port 7420] [--no-open]             Start Web GUI
+```
 
-## 配置说明
+Global flags: `-c <config path>`, `-v` (verbose).
 
-完整配置见 `config.example.yml`，关键参数：
+Exit codes: `3` = Codex is running (close it first).
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `sync.direction` | `bidirectional` | 同步方向：双向/push/pull |
-| `sync.session_mode` | `last_date_only` | 同步范围：仅最新日期/全部 |
-| `conflict.policy` | `manual_abort` | 冲突策略 |
-| `backup.compression` | `none` | 备份压缩：none/zip |
-| `backup.retention_days` | `30` | 备份保留天数 |
-| `server.port` | `7420` | Web GUI 端口 |
+## Typical workflow: machine A → machine B
+
+```bash
+# On machine A: close Codex, then
+cxsync sync --apply
+
+# Wait for your WebDAV/cloud server to settle
+
+# On machine B: close Codex, then
+cxsync sync --apply
+
+# Reopen Codex — sessions are there
+```
+
+## Web GUI
+
+| Page | What it does |
+|------|--------------|
+| Dashboard | Codex process status, session stats, quick actions |
+| Sessions | Browse by project, search, double-click rename, delete |
+| Sync | WebDAV connection test, plan preview, live progress + log stream |
+| Backup | Snapshot list with storage path, create/restore/delete, provider merge |
+
+## How Codex stores sessions (what this tool touches)
+
+| Store | Purpose |
+|-------|---------|
+| `sessions/YYYY/MM/DD/rollout-*.jsonl` | Conversation content (JSONL, first line is `session_meta`) |
+| `session_index.jsonl` | Index used by `codex resume` |
+| `state_5.sqlite` → `threads` | Source of truth for the Codex Desktop session list (titles, providers) |
+
+Rename writes stores 2+3 (auto-creating missing index entries). Delete cleans all three. Provider merge rewrites `model_provider` in stores 1+3.
+
+## Configuration
+
+See [`config.example.yml`](./config.example.yml) for the full annotated config. Key options:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `sync.direction` | `bidirectional` | `bidirectional` / `push` / `pull` |
+| `sync.session_mode` | `last_date_only` | Sync only latest date folder, or `all` |
+| `sync.compare` | `mtime` | `mtime` or `mtime_hash_fallback` (SHA-256 tiebreak) |
+| `conflict.policy` | `manual_abort` | Conflict resolution strategy |
+| `backup.compression` | `none` | `none` (directory) or `zip` |
+| `backup.retention_days` | `30` | Auto-prune old snapshots |
+| `server.port` | `7420` | Web GUI port (binds 127.0.0.1 only) |
 
 ## REST API
 
-服务端 API 文档见 `docs/API.md`，支持通过 HTTP 集成到其他工具。
+The Web GUI is backed by a documented REST API (`docs/API.md`) — sessions, sync plan/apply (SSE), backups, provider merge, WebDAV test. Integrate it into your own tooling if you like.
 
-## 项目结构
-
-```
-bin/cxsync.js          CLI 入口
-src/
-  config.js            配置加载
-  scanner.js           扫描本地 ~/.codex
-  webdav-client.js     WebDAV 客户端
-  sync-engine.js       同步计划与执行（纯逻辑）
-  backup.js            快照备份/恢复
-  manifest.js          同步清单
-  process-check.js     Codex 进程检测
-  logger.js            结构化日志
-  server.js            Express HTTP 服务器
-  api/                 REST API 路由
-  doctor.js            预检诊断
-web/index.html         Web GUI（单文件 SPA）
-test/                  单元测试
-docs/API.md            REST API 契约
-docs/ARCHITECTURE.md   架构说明
-```
-
-## 开发
+## Development
 
 ```bash
-npm test          # 运行单元测试
-npm run dev       # 开发模式启动（端口 7420）
+npm test        # unit + e2e tests (e2e runs against an in-memory WebDAV server)
+npm run dev     # start GUI server on :7420
 ```
 
-## 安全说明
+Project layout: see [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-- **只在 Codex 关闭后同步**：工具会检测 Codex 进程，运行中拒绝执行
-- **覆盖前备份**：每次覆盖文件前自动创建备份快照
-- **密码存本地**：WebDAV 密码仅存在本机 `config.yml`，不上传
+## Security notes
+
+- Sync/delete/merge refuse to run while Codex is running (process detection, sqlite lock safety)
+- Every overwrite/merge/restore is preceded by an automatic snapshot
+- WebDAV credentials live only in your local `config.yml` (never uploaded)
+- The GUI server binds to `127.0.0.1` — not reachable from the network
+
+## Acknowledgements
+
+Design informed by [codexSync](https://github.com/kroxiksut/codexSync) (cold-sync handoff, backup-before-overwrite) and codex-session-toolkit variants (web UI session browsing, rename write-back).
 
 ## License
 
