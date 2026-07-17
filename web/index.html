@@ -473,7 +473,7 @@ async function renderSync(main) {
     el('div',{}, el('label',{},'远端路径'), pathIn),
   );
 
-  const testBtn = el('button',{class:'btn btn-ghost btn-sm', onclick: async () => {
+  const testBtn = el('button',{class:'btn btn-ghost btn-sm', style:'margin-top:20px', onclick: async () => {
     testBtn.disabled = true; testBtn.textContent = '测试中…';
     statusDot.className = 'dot dot-yellow';
     statusText.textContent = '连接中…';
@@ -592,10 +592,19 @@ async function renderBackup(main) {
   const listCard = el('div',{class:'card mb-16'});
   listCard.appendChild(el('div',{class:'card-title'},'备份列表'));
   showLoading();
-  let backups = [];
-  try { backups = (await GET('/backups')).backups || []; }
+  let backups = [], backupDir = '';
+  try {
+    const r = await GET('/backups');
+    backups = r.backups || [];
+    backupDir = r.backup_dir || '';
+  }
   catch(e) { toast('加载备份失败: '+e.message,'error'); }
   finally { hideLoading(); }
+
+  // 显示快照存储路径
+  if (backupDir) {
+    listCard.appendChild(el('div',{class:'text-muted text-sm mb-8'}, `存储位置: ${backupDir}`));
+  }
 
   if (!backups.length) {
     listCard.appendChild(el('div',{class:'text-muted',style:'padding:24px;text-align:center'},'暂无备份'));
@@ -607,12 +616,24 @@ async function renderBackup(main) {
     const tbody = el('tbody',{});
     backups.sort((a,b)=>b.created_at.localeCompare(a.created_at)).forEach(b => {
       const restoreBtn = el('button',{class:'btn btn-ghost btn-sm', onclick: () => startRestore(b.name, progressArea, bar, logEl, summaryEl)}, '恢复');
+      const deleteBtn = el('button',{class:'btn btn-danger btn-sm', onclick: async () => {
+        if (!confirm(`确定删除快照 ${b.name} 吗？此操作不可撤销。`)) return;
+        deleteBtn.disabled = true;
+        try {
+          await api('DELETE', '/backups/' + encodeURIComponent(b.name));
+          toast('快照已删除', 'success');
+          renderBackup(main);
+        } catch(e) {
+          toast('删除失败: ' + e.message, 'error');
+          deleteBtn.disabled = false;
+        }
+      }}, '删除');
       tbody.appendChild(el('tr',{},
         el('td',{}, b.name),
         el('td',{class:'text-muted'}, fmtDate(b.created_at)),
         el('td',{class:'text-muted'}, fmtBytes(b.size_bytes)),
         el('td',{}, el('span',{class:'badge badge-blue'}, b.format||'none')),
-        el('td',{}, restoreBtn),
+        el('td',{}, el('div',{class:'flex gap-8'}, restoreBtn, deleteBtn)),
       ));
     });
     tbl.appendChild(tbody);

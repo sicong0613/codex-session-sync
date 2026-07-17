@@ -156,6 +156,26 @@ function dirSizeSync(dir) {
   return total;
 }
 
+// ─── deleteSnapshot ──────────────────────────────────────────────────────────
+
+/**
+ * 删除指定快照（目录或 .zip 文件）
+ * 名称须来自 listSnapshots，禁止路径穿越
+ *
+ * @param {{ snapshot: string, backupDir: string }} params
+ */
+export function deleteSnapshot({ snapshot, backupDir }) {
+  // 防路径穿越：名称不允许包含路径分隔符或 ..
+  if (!snapshot || /[\\/]|\.\./.test(snapshot)) {
+    throw new Error(`Invalid snapshot name: ${snapshot}`);
+  }
+  const snapshotPath = join(backupDir, snapshot);
+  if (!existsSync(snapshotPath)) {
+    throw new Error(`Snapshot not found: ${snapshot}`);
+  }
+  rmSync(snapshotPath, { recursive: true, force: true });
+}
+
 // ─── restoreSnapshot ─────────────────────────────────────────────────────────
 
 /**

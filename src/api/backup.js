@@ -1,6 +1,6 @@
 // src/api/backup.js — GET /api/backups, POST /api/backup, POST /api/restore
 import { Router } from 'express';
-import { listSnapshots, createSnapshot, restoreSnapshot } from '../backup.js';
+import { listSnapshots, createSnapshot, restoreSnapshot, deleteSnapshot } from '../backup.js';
 import { sseStream } from '../server.js';
 
 export const router = Router();
@@ -9,9 +9,22 @@ router.get('/backups', async (req, res) => {
   const cfg = req.app.locals.cfg;
   try {
     const backups = await listSnapshots(cfg.backup_dir);
-    res.json({ backups });
+    res.json({ backups, backup_dir: cfg.backup_dir });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete('/backups/:name', async (req, res) => {
+  const cfg = req.app.locals.cfg;
+  const log = req.app.locals.log;
+  try {
+    deleteSnapshot({ snapshot: req.params.name, backupDir: cfg.backup_dir });
+    log.info(`Backup deleted: ${req.params.name}`);
+    res.json({ ok: true });
+  } catch (e) {
+    const code = /not found/i.test(e.message) ? 404 : /invalid/i.test(e.message) ? 400 : 500;
+    res.status(code).json({ error: e.message });
   }
 });
 
