@@ -33,13 +33,26 @@ Codex (CLI / Desktop / IDE extension) keeps all conversation state in a local `~
 ## Installation
 
 ```bash
+npm install -g codex-session-sync
+```
+
+This gives you the `cxsync` command. Or run without installing:
+
+```bash
+npx codex-session-sync
+```
+
+<details>
+<summary>Install from source</summary>
+
+```bash
 git clone https://github.com/shonngithub/codex-session-sync.git
 cd codex-session-sync
 npm install
-
-# optional: install the `cxsync` command globally
 npm install -g .
 ```
+
+</details>
 
 ## Quick start
 
@@ -58,7 +71,7 @@ cxsync init-config
 cxsync doctor
 
 # 4. Start the Web GUI (opens browser automatically)
-cxsync serve
+cxsync            # same as `cxsync serve`
 ```
 
 Or go CLI-only:
@@ -80,7 +93,7 @@ cxsync restore [--from <snapshot>] --apply         Restore from backup
 cxsync sessions [--project <name>]                 List local sessions
 cxsync merge-providers --list                      Show sessions per login provider
 cxsync merge-providers --from openai --to custom --apply   Merge providers
-cxsync serve [--port 7420] [--no-open]             Start Web GUI
+cxsync serve [--port 7420] [--no-open]             Start Web GUI (default — plain `cxsync` works too)
 ```
 
 Global flags: `-c <config path>`, `-v` (verbose).

@@ -33,13 +33,26 @@ Codex（CLI / Desktop / IDE 插件）把所有会话状态存在本地 `~/.codex
 ## 安装
 
 ```bash
+npm install -g codex-session-sync
+```
+
+安装后即可使用 `cxsync` 命令。也可以免安装直接运行：
+
+```bash
+npx codex-session-sync
+```
+
+<details>
+<summary>从源码安装</summary>
+
+```bash
 git clone https://github.com/shonngithub/codex-session-sync.git
 cd codex-session-sync
 npm install
-
-# 可选：全局安装 cxsync 命令
 npm install -g .
 ```
+
+</details>
 
 ## 快速开始
 
@@ -58,7 +71,7 @@ cxsync init-config
 cxsync doctor
 
 # 4. 启动 Web GUI（自动打开浏览器）
-cxsync serve
+cxsync            # 等价于 `cxsync serve`
 ```
 
 纯命令行方式：
@@ -80,7 +93,7 @@ cxsync restore [--from <snapshot>] --apply         从备份恢复
 cxsync sessions [--project <name>]                 列出本地会话
 cxsync merge-providers --list                      查看各登录方式的会话数
 cxsync merge-providers --from openai --to custom --apply   合并登录方式
-cxsync serve [--port 7420] [--no-open]             启动 Web GUI
+cxsync serve [--port 7420] [--no-open]             启动 Web GUI（默认命令，直接运行 `cxsync` 即可）
 ```
 
 全局参数：`-c <配置路径>`、`-v`（详细日志）。

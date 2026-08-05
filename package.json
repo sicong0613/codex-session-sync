@@ -1,7 +1,8 @@
 {
   "name": "codex-session-sync",
   "version": "0.1.0",
-  "description": "Sync, back up, and manage local OpenAI Codex sessions across machines via WebDAV, with CLI and Web GUI",
+  "description": "Sync, back up, and manage local OpenAI Codex sessions across machines via WebDAV — CLI + local Web GUI. Cold sync, snapshots, session rename/delete, provider merge.",
+  "author": "shonn",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shonngithub/codex-session-sync.git"
@@ -13,8 +14,18 @@
   "bin": {
     "cxsync": "./bin/cxsync.js"
   },
-  "main": "src/index.js",
+  "main": "src/server.js",
   "type": "module",
+  "files": [
+    "bin/",
+    "src/",
+    "web/",
+    "docs/",
+    "config.example.yml",
+    "README.md",
+    "README_CN.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node bin/cxsync.js serve",
     "dev": "node bin/cxsync.js serve --port 7420",
@@ -35,6 +46,19 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["codex", "session", "sync", "webdav", "backup"],
+  "keywords": [
+    "codex",
+    "openai-codex",
+    "session",
+    "sync",
+    "webdav",
+    "backup",
+    "restore",
+    "snapshot",
+    "cli",
+    "web-gui",
+    "nextcloud",
+    "synology"
+  ],
   "license": "MIT"
 }

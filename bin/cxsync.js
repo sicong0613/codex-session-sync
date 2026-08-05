@@ -219,8 +219,8 @@ program
 
 // ── serve ────────────────────────────────────────────────────────────────────
 program
-  .command('serve')
-  .description('Start Web GUI server')
+  .command('serve', { isDefault: true })
+  .description('Start Web GUI server (default command — plain `cxsync` runs this)')
   .option('--port <n>', 'port', '7420')
   .option('--no-open', 'do not open browser')
   .action(async (opts) => {
