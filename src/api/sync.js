@@ -15,7 +15,6 @@ router.post('/plan', async (req, res) => {
     const { localFiles, remoteFiles } = await prepareSyncFileSets({
       codexHome: cfg.codex_home,
       davClient: dav,
-      remotePath: cfg.webdav.remote_path,
       manifestPath: cfg.manifest_path,
     });
     const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
@@ -38,10 +37,9 @@ router.post('/apply', async (req, res) => {
     }
 
     const dav = createWebDAVClient(cfg.webdav);
-    const { prevManifest, localFiles, remoteFiles } = await prepareSyncFileSets({
+    const { prevManifest, localFiles, remoteFiles, sharedRemoteManifest } = await prepareSyncFileSets({
       codexHome: cfg.codex_home,
       davClient: dav,
-      remotePath: cfg.webdav.remote_path,
       manifestPath: cfg.manifest_path,
     });
     const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
@@ -63,7 +61,7 @@ router.post('/apply', async (req, res) => {
     await finalizeManifest({
       manifestPath: cfg.manifest_path,
       machineId: cfg.machine_id,
-      prevManifest, localFiles, remoteFiles, plan, result,
+      prevManifest, localFiles, remoteFiles, plan, result, sharedRemoteManifest,
       codexHome: cfg.codex_home,
       davClient: dav,
     });

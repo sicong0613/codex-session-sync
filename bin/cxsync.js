@@ -71,7 +71,6 @@ program
     const { localFiles, remoteFiles } = await prepareSyncFileSets({
       codexHome: cfg.codex_home,
       davClient: dav,
-      remotePath: cfg.webdav.remote_path,
       manifestPath: cfg.manifest_path,
     });
 
@@ -103,10 +102,9 @@ program
     const { prepareSyncFileSets, finalizeManifest } = await import('../src/manifest.js');
 
     const dav = createWebDAVClient(cfg.webdav);
-    const { prevManifest, localFiles, remoteFiles } = await prepareSyncFileSets({
+    const { prevManifest, localFiles, remoteFiles, sharedRemoteManifest } = await prepareSyncFileSets({
       codexHome: cfg.codex_home,
       davClient: dav,
-      remotePath: cfg.webdav.remote_path,
       manifestPath: cfg.manifest_path,
     });
     const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
@@ -128,7 +126,7 @@ program
     await finalizeManifest({
       manifestPath: cfg.manifest_path,
       machineId: cfg.machine_id,
-      prevManifest, localFiles, remoteFiles, plan, result,
+      prevManifest, localFiles, remoteFiles, plan, result, sharedRemoteManifest,
       codexHome: cfg.codex_home,
       davClient: dav,
     });

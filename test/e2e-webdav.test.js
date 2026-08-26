@@ -1,11 +1,12 @@
 // test/e2e-webdav.test.js — end-to-end sync against a local WebDAV server
 import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, rmSync, readdirSync, statSync } from 'fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, rmSync, readdirSync, statSync, utimesSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { v2 as webdavServer } from 'webdav-server';
 import { createWebDAVClient } from '../src/webdav-client.js';
 import { buildPlan, applyPlan } from '../src/sync-engine.js';
+import { prepareSyncFileSets, finalizeManifest, isRemoteManifestFile } from '../src/manifest.js';
 
 const PORT = 17999;
 let server;
@@ -110,5 +111,91 @@ describe('e2e: WebDAV sync', () => {
     });
     expect(result.downloaded).toBe(1);
     expect(existsSync(join(localDir, 'sessions/2026/07/17/rollout-remote-new.jsonl'))).toBe(true);
+  });
+});
+
+describe('e2e: cross-device dedup via shared remote manifest (real WebDAV server)', () => {
+  const HASH_CONFIG = {
+    sync: { compare: 'mtime_hash_fallback', time_tolerance_seconds: 2, equal_mtime_action: 'skip' },
+    conflict: { policy: 'manual_abort' },
+    backup: { enabled: false },
+  };
+  const davConfig = { url: `http://localhost:${PORT}`, remote_path: '/codex-sync-crossdevice' };
+  let dirA, dirB;
+
+  afterAll(() => {
+    rmSync(dirA, { recursive: true, force: true });
+    rmSync(dirB, { recursive: true, force: true });
+  });
+
+  test('device A uploads, pushing its hash into the shared remote manifest', async () => {
+    dirA = mkdtempSync(join(tmpdir(), 'cxsync-e2e-devA-'));
+    mkdirSync(join(dirA, 'sessions/2026/07/17'), { recursive: true });
+    writeFileSync(join(dirA, 'sessions/2026/07/17/rollout-shared.jsonl'),
+      '{"type":"session_meta","payload":{"cwd":"/shared/proj"}}\n{"type":"message","text":"same everywhere"}\n');
+    writeFileSync(join(dirA, 'session_index.jsonl'), '{"id":"shared-1"}\n');
+
+    const dav = createWebDAVClient(davConfig);
+    const manifestPathA = join(dirA, '.manifest.json'); // device A has never synced before
+
+    const { prevManifest, localFiles, remoteFiles, sharedRemoteManifest } = await prepareSyncFileSets({
+      codexHome: dirA, davClient: dav, manifestPath: manifestPathA,
+    });
+    const plan = buildPlan({ localFiles, remoteFiles, config: HASH_CONFIG });
+    expect(plan.to_upload.length).toBe(2);
+
+    const result = await applyPlan({
+      plan, config: HASH_CONFIG, localBase: dirA, remoteBase: davConfig.remote_path, davClient: dav,
+    });
+    expect(result.uploaded).toBe(2);
+
+    await finalizeManifest({
+      manifestPath: manifestPathA, machineId: 'device-A', prevManifest, localFiles, remoteFiles,
+      plan, result, sharedRemoteManifest, codexHome: dirA, davClient: dav,
+    });
+
+    // the shared manifest really landed on the WebDAV server
+    const remoteListing = await dav.list();
+    const rels = remoteListing.map(f => f.rel);
+    expect(rels).toContain('.cxsync-manifest.json');
+  });
+
+  test('shared manifest file itself is filtered out of the plan-building file set', async () => {
+    const dav = createWebDAVClient(davConfig);
+    const { remoteFiles } = await prepareSyncFileSets({
+      codexHome: dirA, davClient: dav,
+      manifestPath: join(dirA, '.manifest.json'),
+    });
+    expect(Object.keys(remoteFiles).some(isRemoteManifestFile)).toBe(false);
+  });
+
+  test('device B — brand new machine, never synced before — sees the file as unchanged instead of re-uploading', async () => {
+    dirB = mkdtempSync(join(tmpdir(), 'cxsync-e2e-devB-'));
+    mkdirSync(join(dirB, 'sessions/2026/07/17'), { recursive: true });
+    // identical bytes to what device A uploaded, but with an mtime forced far away (year 2000) —
+    // well beyond time_tolerance_seconds, so 'unchanged' can only come from the hash match,
+    // never from mtime-tolerance coincidentally overlapping since both tests ran moments apart.
+    const farPast = new Date('2000-01-01T00:00:00Z');
+    const fileB1 = join(dirB, 'sessions/2026/07/17/rollout-shared.jsonl');
+    const fileB2 = join(dirB, 'session_index.jsonl');
+    writeFileSync(fileB1, '{"type":"session_meta","payload":{"cwd":"/shared/proj"}}\n{"type":"message","text":"same everywhere"}\n');
+    writeFileSync(fileB2, '{"id":"shared-1"}\n');
+    utimesSync(fileB1, farPast, farPast);
+    utimesSync(fileB2, farPast, farPast);
+
+    const dav = createWebDAVClient(davConfig);
+    // device B has never synced before: no manifest.json exists for it anywhere
+    const manifestPathB = join(dirB, '.manifest.json');
+    expect(existsSync(manifestPathB)).toBe(false);
+
+    const { localFiles, remoteFiles } = await prepareSyncFileSets({
+      codexHome: dirB, davClient: dav, manifestPath: manifestPathB,
+    });
+    const plan = buildPlan({ localFiles, remoteFiles, config: HASH_CONFIG });
+
+    expect(plan.unchanged).toContain('sessions/2026/07/17/rollout-shared.jsonl');
+    expect(plan.unchanged).toContain('session_index.jsonl');
+    expect(plan.to_upload).toHaveLength(0);
+    expect(plan.to_download).toHaveLength(0);
   });
 });
