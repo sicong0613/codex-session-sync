@@ -9,7 +9,7 @@ src/
   config.js              Load & validate config.yml
   scanner.js             Walk ~/.codex, parse session_index.jsonl
   webdav-client.js       webdav npm wrapper (list/stat/get/put/mkdir)
-  manifest.js            Read/write sync manifest (local + remote)
+  manifest.js            Read/write sync manifest; sha256 cache (local+remote) keyed by mtime+size
   sync-engine.js         Build plan, resolve conflicts, apply (copy/skip/abort)
   backup.js              Snapshot creation & restore, zip support
   process-check.js       Detect codex.exe / codex process, optional terminate
@@ -50,7 +50,7 @@ machine_id: machine-a
 sync:
   mode: cold                  # cold only (Codex must be closed)
   direction: bidirectional    # bidirectional | push | pull
-  compare: mtime              # mtime | mtime_hash_fallback
+  compare: mtime_hash_fallback  # mtime | mtime_hash_fallback
   time_tolerance_seconds: 2
   equal_mtime_action: skip    # skip | prefer_local | prefer_cloud | manual_abort
   delete_policy: never

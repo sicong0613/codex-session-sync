@@ -1,8 +1,8 @@
 // src/api/sync.js — POST /api/sync/plan, POST /api/sync/apply (SSE)
 import { Router } from 'express';
-import { scanCodexHome } from '../scanner.js';
 import { createWebDAVClient } from '../webdav-client.js';
 import { buildSyncPlan, applyPlan } from '../sync-engine.js';
+import { prepareSyncFileSets, finalizeManifest } from '../manifest.js';
 import { isCodexRunning } from '../process-check.js';
 import { sseStream } from '../server.js';
 
@@ -11,10 +11,14 @@ export const router = Router();
 router.post('/plan', async (req, res) => {
   const cfg = req.app.locals.cfg;
   try {
-    const local = await scanCodexHome(cfg.codex_home);
     const dav = createWebDAVClient(cfg.webdav);
-    const remoteFiles = await dav.list(cfg.webdav.remote_path).catch(() => []);
-    const plan = buildSyncPlan({ localFiles: local.allFiles, remoteFiles, config: cfg });
+    const { localFiles, remoteFiles } = await prepareSyncFileSets({
+      codexHome: cfg.codex_home,
+      davClient: dav,
+      remotePath: cfg.webdav.remote_path,
+      manifestPath: cfg.manifest_path,
+    });
+    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
     res.json({ plan });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -33,10 +37,14 @@ router.post('/apply', async (req, res) => {
       sse.end(); return;
     }
 
-    const local = await scanCodexHome(cfg.codex_home);
     const dav = createWebDAVClient(cfg.webdav);
-    const remoteFiles = await dav.list(cfg.webdav.remote_path).catch(() => []);
-    const plan = buildSyncPlan({ localFiles: local.allFiles, remoteFiles, config: cfg });
+    const { prevManifest, localFiles, remoteFiles } = await prepareSyncFileSets({
+      codexHome: cfg.codex_home,
+      davClient: dav,
+      remotePath: cfg.webdav.remote_path,
+      manifestPath: cfg.manifest_path,
+    });
+    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
 
     const total = plan.to_upload.length + plan.to_download.length;
     sse.send({ type: 'start', total });
@@ -50,6 +58,14 @@ router.post('/apply', async (req, res) => {
         log.info('sync progress', p);
         sse.send({ type: 'progress', ...p, total });
       },
+    });
+
+    await finalizeManifest({
+      manifestPath: cfg.manifest_path,
+      machineId: cfg.machine_id,
+      prevManifest, localFiles, remoteFiles, plan, result,
+      codexHome: cfg.codex_home,
+      davClient: dav,
     });
 
     sse.send({ type: 'done', ...result });

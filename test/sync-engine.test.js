@@ -81,6 +81,36 @@ describe('buildPlan', () => {
     expect(plan.conflicts.length).toBeGreaterThan(0);
   });
 
+  test('hash fallback: touched file (mtime jumped) but identical content stays unchanged', () => {
+    // local mtime is far newer than remote (well beyond tolerance), but sha256 matches:
+    // a plain 'mtime' compare would misfire an upload here; hash mode should not.
+    const plan = buildPlan({
+      localFiles:  { 'sessions/g.jsonl': { mtime: 500000, size: 100, sha256: 'abc123' } },
+      remoteFiles: { 'sessions/g.jsonl': { mtime: 1000,   size: 100, sha256: 'abc123' } },
+      config: { ...BASE_CONFIG, sync: { ...BASE_CONFIG.sync, compare: 'mtime_hash_fallback' } },
+    });
+    expect(plan.unchanged).toContain('sessions/g.jsonl');
+    expect(plan.to_upload).toHaveLength(0);
+  });
+
+  test('hash fallback: genuinely different content still uploads even with mtime close', () => {
+    const plan = buildPlan({
+      localFiles:  { 'sessions/h.jsonl': { mtime: 500000, size: 100, sha256: 'aaa' } },
+      remoteFiles: { 'sessions/h.jsonl': { mtime: 1000,   size: 100, sha256: 'bbb' } },
+      config: { ...BASE_CONFIG, sync: { ...BASE_CONFIG.sync, compare: 'mtime_hash_fallback' } },
+    });
+    expect(plan.to_upload).toContain('sessions/h.jsonl');
+  });
+
+  test('hash fallback: missing hash on one side falls back to mtime behavior', () => {
+    const plan = buildPlan({
+      localFiles:  { 'sessions/i.jsonl': { mtime: 1000, size: 100 } },
+      remoteFiles: { 'sessions/i.jsonl': { mtime: 1000, size: 100 } },
+      config: { ...BASE_CONFIG, sync: { ...BASE_CONFIG.sync, compare: 'mtime_hash_fallback' } },
+    });
+    expect(plan.unchanged).toContain('sessions/i.jsonl');
+  });
+
   test('multiple files mixed', () => {
     // Use mtime values clearly beyond 2000ms tolerance
     const plan = buildPlan({

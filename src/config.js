@@ -10,7 +10,7 @@ const DEFAULTS = {
   sync: {
     mode: 'cold',
     direction: 'bidirectional',
-    compare: 'mtime',
+    compare: 'mtime_hash_fallback',
     time_tolerance_seconds: 2,
     equal_mtime_action: 'skip',
     delete_policy: 'never',
@@ -58,6 +58,12 @@ export function loadConfig(configPath) {
   if (!merged.backup_dir) {
     const base = configPath ? dirname(resolve(configPath)) : expandHome('~/.codex-session-sync');
     merged.backup_dir = resolve(base, 'backups');
+  }
+  // manifest.json 记录上次同步时每个文件的 sha256 + 双端 mtime/size，
+  // 用于在不下载/少读盘的前提下判断文件内容是否真的变化过
+  if (!merged.manifest_path) {
+    const base = configPath ? dirname(resolve(configPath)) : expandHome('~/.codex-session-sync');
+    merged.manifest_path = resolve(base, 'manifest.json');
   }
   return merged;
 }

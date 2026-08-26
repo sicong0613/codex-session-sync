@@ -63,16 +63,19 @@ program
     const cfg = getConfig(program);
     const log = makeLogger(cfg, program);
     const { buildSyncPlan } = await import('../src/sync-engine.js');
-    const { scanCodexHome } = await import('../src/scanner.js');
     const { createWebDAVClient } = await import('../src/webdav-client.js');
+    const { prepareSyncFileSets } = await import('../src/manifest.js');
 
-    log.info('Scanning local state…');
-    const local = await scanCodexHome(cfg.codex_home);
+    log.info('Scanning local state and remote file list…');
     const dav = createWebDAVClient(cfg.webdav);
-    log.info('Fetching remote file list…');
-    const remoteFiles = await dav.list(cfg.webdav.remote_path).catch(() => []);
+    const { localFiles, remoteFiles } = await prepareSyncFileSets({
+      codexHome: cfg.codex_home,
+      davClient: dav,
+      remotePath: cfg.webdav.remote_path,
+      manifestPath: cfg.manifest_path,
+    });
 
-    const plan = buildSyncPlan({ localFiles: local.allFiles, remoteFiles, config: cfg });
+    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
     console.log(JSON.stringify(plan, null, 2));
   });
 
@@ -95,14 +98,18 @@ program
       process.exit(3);
     }
 
-    const { scanCodexHome } = await import('../src/scanner.js');
     const { createWebDAVClient } = await import('../src/webdav-client.js');
     const { buildSyncPlan, applyPlan } = await import('../src/sync-engine.js');
+    const { prepareSyncFileSets, finalizeManifest } = await import('../src/manifest.js');
 
-    const local = await scanCodexHome(cfg.codex_home);
     const dav = createWebDAVClient(cfg.webdav);
-    const remoteFiles = await dav.list(cfg.webdav.remote_path).catch(() => []);
-    const plan = buildSyncPlan({ localFiles: local.allFiles, remoteFiles, config: cfg });
+    const { prevManifest, localFiles, remoteFiles } = await prepareSyncFileSets({
+      codexHome: cfg.codex_home,
+      davClient: dav,
+      remotePath: cfg.webdav.remote_path,
+      manifestPath: cfg.manifest_path,
+    });
+    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
 
     if (opts.dryRun) {
       console.log('DRY RUN — plan:');
@@ -117,6 +124,15 @@ program
       davClient: dav,
       onProgress: (p) => log.info('sync', p),
     });
+
+    await finalizeManifest({
+      manifestPath: cfg.manifest_path,
+      machineId: cfg.machine_id,
+      prevManifest, localFiles, remoteFiles, plan, result,
+      codexHome: cfg.codex_home,
+      davClient: dav,
+    });
+
     console.log('Sync complete:', result);
   });
 

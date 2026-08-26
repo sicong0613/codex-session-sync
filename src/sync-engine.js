@@ -91,24 +91,21 @@ export function buildPlan({ localFiles, remoteFiles, config }) {
  * @returns {'equal'|'upload'|'download'|'conflict'}
  */
 function compareFiles(local, remote, { compare, toleranceMs }) {
-  // 大小相同且 mtime 相差在容差内：视为相同（mtime 模式）
-  if (local.size === remote.size && mtimeEqual(local, remote, toleranceMs)) {
-    if (compare === 'mtime') return 'equal';
-    // mtime_hash_fallback：mtime 接近时比较 hash
-    if (compare === 'mtime_hash_fallback') {
-      if (local.sha256 && remote.sha256) {
-        return local.sha256 === remote.sha256 ? 'equal' : 'conflict';
-      }
-      // 缺少 hash 时按 mtime 逻辑处理
-      return 'equal';
-    }
+  // hash 模式且两侧都有哈希：内容比较优先于 mtime，
+  // 这样"文件被 touch 但内容没变"（mtime 跳变、size 不变）不会被误判为需要传输。
+  if (compare === 'mtime_hash_fallback' && local.sha256 && remote.sha256) {
+    if (local.sha256 === remote.sha256) return 'equal';
+    // 哈希不同：内容确实变了，继续走下面的 mtime 方向判断
+  } else if (local.size === remote.size && mtimeEqual(local, remote, toleranceMs)) {
+    // mtime 模式，或缺少哈希时的回退：大小相同且 mtime 在容差内视为相同
+    return 'equal';
   }
 
-  // 大小不同或 mtime 超出容差：取更新的一方
+  // 取更新的一方
   if (local.mtime > remote.mtime + toleranceMs) return 'upload';
   if (remote.mtime > local.mtime + toleranceMs) return 'download';
 
-  // mtime 接近但大小不同：冲突
+  // mtime 接近但内容/大小不同：冲突
   return 'conflict';
 }
 

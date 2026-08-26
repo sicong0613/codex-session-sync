@@ -4,7 +4,7 @@ machine_id: my-machine
 sync:
   mode: cold
   direction: bidirectional
-  compare: mtime
+  compare: mtime_hash_fallback  # mtime | mtime_hash_fallback (sha256, cached in manifest.json)
   time_tolerance_seconds: 2
   equal_mtime_action: skip
   delete_policy: never
