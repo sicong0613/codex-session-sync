@@ -236,6 +236,24 @@ export async function finalizeManifest({
     } catch { /* 文件写入失败/已被移除，跳过 */ }
   }
 
+  // 成功镜像删除的文件：清掉两份 manifest 里对应的记录，
+  // 否则残留的旧哈希会在文件被重新创建时造成误判。
+  for (const rel of [...(plan.to_delete_local ?? []), ...(plan.to_delete_remote ?? [])]) {
+    if (erroredRels.has(rel)) continue;
+    delete files[rel];
+    delete shared[rel];
+  }
+
+  // 垃圾回收：两侧都已经不在了、又没有出现在本次计划里的旧记录
+  // （例如两台设备几乎同时各自删除了同一个文件），顺手清掉，避免 manifest 无限膨胀。
+  const liveRels = new Set([...Object.keys(localFiles), ...Object.keys(remoteFiles)]);
+  for (const rel of Object.keys(files)) {
+    if (!liveRels.has(rel) && !erroredRels.has(rel)) delete files[rel];
+  }
+  for (const rel of Object.keys(shared)) {
+    if (!liveRels.has(rel) && !erroredRels.has(rel)) delete shared[rel];
+  }
+
   writeManifest(manifestPath, {
     machine_id: machineId,
     synced_at: new Date().toISOString(),

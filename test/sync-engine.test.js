@@ -1,6 +1,9 @@
 // test/sync-engine.test.js
-import { describe, test, expect } from '@jest/globals';
-import { buildPlan } from '../src/sync-engine.js';
+import { describe, test, expect, afterEach } from '@jest/globals';
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { buildPlan, applyPlan } from '../src/sync-engine.js';
 
 const BASE_CONFIG = {
   sync: { compare: 'mtime', time_tolerance_seconds: 2, equal_mtime_action: 'skip' },
@@ -130,5 +133,135 @@ describe('buildPlan', () => {
     expect(plan.to_upload).toContain('c.jsonl');
     expect(plan.to_download).toContain('d.jsonl');
     expect(plan.unchanged).toContain('b.jsonl');
+  });
+
+  describe('delete propagation (delete_policy)', () => {
+    const MIRROR_CONFIG = { ...BASE_CONFIG, sync: { ...BASE_CONFIG.sync, delete_policy: 'mirror' } };
+
+    test('default policy (never): missing-remote file just re-uploads, even if manifest shows it was synced before', () => {
+      const plan = buildPlan({
+        localFiles:  { 'gone-remote.jsonl': f(1000) },
+        remoteFiles: {},
+        prevManifestFiles: { 'gone-remote.jsonl': { sha256: 'x' } }, // was synced before
+        config: BASE_CONFIG, // delete_policy defaults to 'never'
+      });
+      expect(plan.to_upload).toContain('gone-remote.jsonl');
+      expect(plan.to_delete_local).toHaveLength(0);
+    });
+
+    test('mirror: file present in manifest but missing on remote → delete it locally too', () => {
+      const plan = buildPlan({
+        localFiles:  { 'x.bak': f(1000) },
+        remoteFiles: {},
+        prevManifestFiles: { 'x.bak': { sha256: 'abc' } }, // previously synced -> remote deletion, not new
+        config: MIRROR_CONFIG,
+      });
+      expect(plan.to_delete_local).toContain('x.bak');
+      expect(plan.to_upload).toHaveLength(0);
+    });
+
+    test('mirror: file present in manifest but missing locally → delete it remotely too', () => {
+      const plan = buildPlan({
+        localFiles:  {},
+        remoteFiles: { 'y.bak': f(2000) },
+        prevManifestFiles: { 'y.bak': { sha256: 'def' } }, // previously synced -> local deletion, not new
+        config: MIRROR_CONFIG,
+      });
+      expect(plan.to_delete_remote).toContain('y.bak');
+      expect(plan.to_download).toHaveLength(0);
+    });
+
+    test('mirror: file never in manifest and missing on remote → still treated as new (upload)', () => {
+      const plan = buildPlan({
+        localFiles:  { 'brand-new.jsonl': f(1000) },
+        remoteFiles: {},
+        prevManifestFiles: {}, // never synced before -> can't be a deletion
+        config: MIRROR_CONFIG,
+      });
+      expect(plan.to_upload).toContain('brand-new.jsonl');
+      expect(plan.to_delete_local).toHaveLength(0);
+    });
+
+    test('mirror: file never in manifest and missing locally → still treated as new (download)', () => {
+      const plan = buildPlan({
+        localFiles:  {},
+        remoteFiles: { 'brand-new-remote.jsonl': f(2000) },
+        prevManifestFiles: {},
+        config: MIRROR_CONFIG,
+      });
+      expect(plan.to_download).toContain('brand-new-remote.jsonl');
+      expect(plan.to_delete_remote).toHaveLength(0);
+    });
+  });
+});
+
+describe('applyPlan delete execution', () => {
+  let dir;
+  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
+
+  function makeFakeDav(initialFiles = {}) {
+    const store = new Map(Object.entries(initialFiles));
+    return {
+      deleted: [],
+      async getFile(rel) {
+        if (!store.has(rel)) { const e = new Error('404'); e.status = 404; throw e; }
+        return store.get(rel);
+      },
+      async deleteFile(rel) {
+        store.delete(rel);
+        this.deleted.push(rel);
+      },
+    };
+  }
+
+  test('to_delete_local removes the local file and reports deletedLocal', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'cxsync-apply-del-'));
+    const target = join(dir, 'x.bak');
+    writeFileSync(target, 'stale backup');
+
+    const dav = makeFakeDav();
+    const plan = { to_upload: [], to_download: [], to_delete_local: ['x.bak'], to_delete_remote: [], conflicts: [], unchanged: [] };
+    const result = await applyPlan({
+      plan, config: { conflict: { policy: 'manual_abort' }, backup: { enabled: false } },
+      localBase: dir, remoteBase: '/x', davClient: dav,
+    });
+
+    expect(result.deletedLocal).toBe(1);
+    expect(result.errors).toHaveLength(0);
+    expect(existsSync(target)).toBe(false);
+  });
+
+  test('to_delete_local with backup.enabled saves a copy under backup_dir/deleted, not next to the original', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'cxsync-apply-del-'));
+    const backupDir = join(dir, '.backups');
+    const target = join(dir, 'sessions', 'old.jsonl');
+    mkdirSync(join(dir, 'sessions'), { recursive: true });
+    writeFileSync(target, 'important-ish content');
+
+    const dav = makeFakeDav();
+    const plan = { to_upload: [], to_download: [], to_delete_local: ['sessions/old.jsonl'], to_delete_remote: [], conflicts: [], unchanged: [] };
+    await applyPlan({
+      plan, config: { conflict: { policy: 'manual_abort' }, backup: { enabled: true }, backup_dir: backupDir },
+      localBase: dir, remoteBase: '/x', davClient: dav,
+    });
+
+    expect(existsSync(target)).toBe(false); // original gone
+    expect(existsSync(join(dir, 'sessions', 'old.jsonl.bak'))).toBe(false); // no sidecar left in the synced tree
+    const safetyCopy = join(backupDir, 'deleted', 'sessions', 'old.jsonl');
+    expect(existsSync(safetyCopy)).toBe(true);
+    expect(readFileSync(safetyCopy, 'utf8')).toBe('important-ish content');
+  });
+
+  test('to_delete_remote calls davClient.deleteFile and reports deletedRemote', async () => {
+    const dav = makeFakeDav({ 'y.bak': Buffer.from('remote stale') });
+    const plan = { to_upload: [], to_download: [], to_delete_local: [], to_delete_remote: ['y.bak'], conflicts: [], unchanged: [] };
+    const result = await applyPlan({
+      plan, config: { conflict: { policy: 'manual_abort' }, backup: { enabled: false } },
+      localBase: tmpdir(), remoteBase: '/x', davClient: dav,
+    });
+
+    expect(result.deletedRemote).toBe(1);
+    expect(result.errors).toHaveLength(0);
+    expect(dav.deleted).toContain('y.bak');
   });
 });

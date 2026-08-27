@@ -7,7 +7,7 @@ sync:
   compare: mtime_hash_fallback  # mtime | mtime_hash_fallback (sha256, cached in manifest.json)
   time_tolerance_seconds: 2
   equal_mtime_action: skip
-  delete_policy: never
+  delete_policy: never  # never (default, safe) | mirror (delete on one side propagates to the other, based on manifest.json history)
   session_mode: last_date_only
 
 conflict:

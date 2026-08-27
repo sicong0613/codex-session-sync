@@ -101,6 +101,20 @@ export function createWebDAVClient(webdavConfig) {
     },
 
     /**
+     * 删除远端文件。目标已经不存在（404）时视为成功——幂等。
+     * @param {string} remotePath
+     */
+    async deleteFile(remotePath) {
+      try {
+        await raw.deleteFile(fullPath(remotePath));
+      } catch (err) {
+        const status = err?.status ?? err?.response?.status;
+        if (status === 404) return;
+        throw err;
+      }
+    },
+
+    /**
      * 测试连通性
      * 远端目录不存在（404）视为连接成功——首次同步时会自动创建
      * @returns {Promise<{ ok: boolean, latency_ms: number, error?: string }>}

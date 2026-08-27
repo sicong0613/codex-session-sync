@@ -12,12 +12,12 @@ router.post('/plan', async (req, res) => {
   const cfg = req.app.locals.cfg;
   try {
     const dav = createWebDAVClient(cfg.webdav);
-    const { localFiles, remoteFiles } = await prepareSyncFileSets({
+    const { prevManifest, localFiles, remoteFiles } = await prepareSyncFileSets({
       codexHome: cfg.codex_home,
       davClient: dav,
       manifestPath: cfg.manifest_path,
     });
-    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
+    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg, prevManifestFiles: prevManifest?.files });
     res.json({ plan });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -42,9 +42,10 @@ router.post('/apply', async (req, res) => {
       davClient: dav,
       manifestPath: cfg.manifest_path,
     });
-    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
+    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg, prevManifestFiles: prevManifest?.files });
 
-    const total = plan.to_upload.length + plan.to_download.length;
+    const total = plan.to_upload.length + plan.to_download.length
+      + plan.to_delete_local.length + plan.to_delete_remote.length;
     sse.send({ type: 'start', total });
 
     const result = await applyPlan({

@@ -199,3 +199,73 @@ describe('e2e: cross-device dedup via shared remote manifest (real WebDAV server
     expect(plan.to_download).toHaveLength(0);
   });
 });
+
+describe('e2e: delete propagation with delete_policy=mirror (real WebDAV server)', () => {
+  const MIRROR_CONFIG = {
+    sync: { compare: 'mtime_hash_fallback', time_tolerance_seconds: 2, equal_mtime_action: 'skip', delete_policy: 'mirror' },
+    conflict: { policy: 'manual_abort' },
+    backup: { enabled: false },
+  };
+  const davConfig = { url: `http://localhost:${PORT}`, remote_path: '/codex-sync-delete' };
+  let dirC;
+  const manifestPathFor = () => join(dirC, '.manifest.json');
+
+  afterAll(() => rmSync(dirC, { recursive: true, force: true }));
+
+  test('setup: a stray .bak file gets synced up like any other tracked file', async () => {
+    dirC = mkdtempSync(join(tmpdir(), 'cxsync-e2e-devC-'));
+    mkdirSync(join(dirC, 'sessions/2026/07/17'), { recursive: true });
+    writeFileSync(join(dirC, 'sessions/2026/07/17/rollout-x.jsonl.bak'), 'a backup nobody wanted uploaded');
+
+    const dav = createWebDAVClient(davConfig);
+    const { prevManifest, localFiles, remoteFiles, sharedRemoteManifest } = await prepareSyncFileSets({
+      codexHome: dirC, davClient: dav, manifestPath: manifestPathFor(),
+    });
+    const plan = buildPlan({ localFiles, remoteFiles, config: MIRROR_CONFIG, prevManifestFiles: prevManifest?.files });
+    expect(plan.to_upload).toContain('sessions/2026/07/17/rollout-x.jsonl.bak');
+
+    const result = await applyPlan({
+      plan, config: MIRROR_CONFIG, localBase: dirC, remoteBase: davConfig.remote_path, davClient: dav,
+    });
+    expect(result.uploaded).toBe(1);
+
+    await finalizeManifest({
+      manifestPath: manifestPathFor(), machineId: 'device-C', prevManifest, localFiles, remoteFiles,
+      plan, result, sharedRemoteManifest, codexHome: dirC, davClient: dav,
+    });
+
+    const rels = (await dav.list()).map(f => f.rel);
+    expect(rels).toContain('sessions/2026/07/17/rollout-x.jsonl.bak');
+  });
+
+  test('deleting the file locally and re-syncing with delete_policy=mirror removes it from the remote too', async () => {
+    // this is exactly the bug being fixed: without manifest-based delete detection,
+    // the next sync would see "remote has it, local doesn't" and download it right back.
+    rmSync(join(dirC, 'sessions/2026/07/17/rollout-x.jsonl.bak'));
+
+    const dav = createWebDAVClient(davConfig);
+    const { prevManifest, localFiles, remoteFiles, sharedRemoteManifest } = await prepareSyncFileSets({
+      codexHome: dirC, davClient: dav, manifestPath: manifestPathFor(),
+    });
+    const plan = buildPlan({ localFiles, remoteFiles, config: MIRROR_CONFIG, prevManifestFiles: prevManifest?.files });
+    expect(plan.to_delete_remote).toContain('sessions/2026/07/17/rollout-x.jsonl.bak');
+    expect(plan.to_download).toHaveLength(0); // must NOT bring the deleted file back
+
+    const result = await applyPlan({
+      plan, config: MIRROR_CONFIG, localBase: dirC, remoteBase: davConfig.remote_path, davClient: dav,
+    });
+    expect(result.deletedRemote).toBe(1);
+
+    await finalizeManifest({
+      manifestPath: manifestPathFor(), machineId: 'device-C', prevManifest, localFiles, remoteFiles,
+      plan, result, sharedRemoteManifest, codexHome: dirC, davClient: dav,
+    });
+
+    const rels = (await dav.list()).map(f => f.rel);
+    expect(rels).not.toContain('sessions/2026/07/17/rollout-x.jsonl.bak');
+
+    // and the manifest no longer remembers it, so it won't be mistaken for a future deletion
+    const finalManifest = JSON.parse(readFileSync(manifestPathFor(), 'utf8'));
+    expect(finalManifest.files['sessions/2026/07/17/rollout-x.jsonl.bak']).toBeUndefined();
+  });
+});

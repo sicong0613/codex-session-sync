@@ -534,6 +534,8 @@ async function renderSync(main) {
       const summary = [
         ['待上传', plan.to_upload.length, 'badge-blue'],
         ['待下载', plan.to_download.length, 'badge-green'],
+        ['待删除(本地)', (plan.to_delete_local||[]).length, 'badge-red'],
+        ['待删除(远端)', (plan.to_delete_remote||[]).length, 'badge-red'],
         ['冲突', plan.conflicts.length, 'badge-red'],
         ['未变化', plan.unchanged.length, 'badge-yellow'],
       ];
@@ -551,6 +553,14 @@ async function renderSync(main) {
       if (plan.to_download.length) {
         planArea.appendChild(el('div',{class:'text-muted text-sm mb-4 mt-8'},'下载:'));
         plan.to_download.slice(0,10).forEach(f => planArea.appendChild(el('div',{class:'text-sm',style:'padding:2px 0'},`↓ ${f}`)));
+      }
+      if ((plan.to_delete_local||[]).length) {
+        planArea.appendChild(el('div',{class:'text-muted text-sm mb-4 mt-8',style:'color:var(--red)'},'将删除本地(远端已删除):'));
+        plan.to_delete_local.slice(0,10).forEach(f => planArea.appendChild(el('div',{class:'text-sm',style:'color:var(--red)'},`✕ ${f}`)));
+      }
+      if ((plan.to_delete_remote||[]).length) {
+        planArea.appendChild(el('div',{class:'text-muted text-sm mb-4 mt-8',style:'color:var(--red)'},'将删除远端(本地已删除):'));
+        plan.to_delete_remote.slice(0,10).forEach(f => planArea.appendChild(el('div',{class:'text-sm',style:'color:var(--red)'},`✕ ${f}`)));
       }
       if (plan.conflicts.length) {
         planArea.appendChild(el('div',{class:'text-muted text-sm mb-4 mt-8',style:'color:var(--red)'},'冲突:'));
@@ -574,7 +584,7 @@ async function renderSync(main) {
     const result = await sseApply('/api/sync/apply', {}, {
       logEl, barEl: bar,
       onDone: r => {
-        summary.innerHTML = `<span class="badge badge-green">完成</span> 上传 ${r.uploaded} 下载 ${r.downloaded} 跳过 ${r.skipped} 错误 ${r.errors}`;
+        summary.innerHTML = `<span class="badge badge-green">完成</span> 上传 ${r.uploaded} 下载 ${r.downloaded} 删本地 ${r.deletedLocal||0} 删远端 ${r.deletedRemote||0} 跳过 ${r.skipped} 错误 ${(r.errors||[]).length ?? r.errors}`;
         toast('同步完成','success');
       },
       onError: e => { toast('同步失败: '+(e.message||''),'error'); }

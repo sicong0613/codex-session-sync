@@ -53,7 +53,7 @@ sync:
   compare: mtime_hash_fallback  # mtime | mtime_hash_fallback
   time_tolerance_seconds: 2
   equal_mtime_action: skip    # skip | prefer_local | prefer_cloud | manual_abort
-  delete_policy: never
+  delete_policy: never          # never | mirror (deletion propagates using manifest.json as the "was this ever synced" record)
   session_mode: last_date_only  # all | last_date_only
 conflict:
   policy: manual_abort        # manual_abort | prefer_cloud | prefer_local | prefer_newer_mtime

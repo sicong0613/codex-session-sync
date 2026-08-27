@@ -202,3 +202,55 @@ describe('readManifest / writeManifest round-trip', () => {
     expect(readManifest(badPath)).toBeNull();
   });
 });
+
+describe('finalizeManifest prunes deleted files instead of leaving stale hash entries', () => {
+  test('a successfully mirrored deletion is removed from both the local and shared manifest', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'cxsync-manifest-'));
+    const manifestPath = join(dir, 'manifest.json');
+    const dav = makeFakeDav();
+
+    const prevManifest = {
+      files: {
+        'x.bak':  { sha256: 'old-hash', local_mtime: 1, local_size: 1, remote_mtime: 1, remote_size: 1 },
+        'kept.jsonl': { sha256: 'keep-hash', local_mtime: 2, local_size: 2, remote_mtime: 2, remote_size: 2 },
+      },
+    };
+    const sharedRemoteManifest = {
+      'x.bak':  { sha256: 'old-hash', mtime: 1, size: 1 },
+      'kept.jsonl': { sha256: 'keep-hash', mtime: 2, size: 2 },
+    };
+    // x.bak was deleted locally and is being mirrored to remote; kept.jsonl is unchanged.
+    const plan = { unchanged: ['kept.jsonl'], to_upload: [], to_download: [], to_delete_local: [], to_delete_remote: ['x.bak'], conflicts: [] };
+    const result = { errors: [] };
+
+    const { files, sharedRemoteManifest: newShared } = await finalizeManifest({
+      manifestPath, machineId: 'm1', prevManifest,
+      localFiles: { 'kept.jsonl': { mtime: 2, size: 2, sha256: 'keep-hash' } },
+      remoteFiles: { 'kept.jsonl': { mtime: 2, size: 2, sha256: 'keep-hash' } },
+      plan, result, sharedRemoteManifest, codexHome: dir, davClient: dav,
+    });
+
+    expect(files['x.bak']).toBeUndefined();
+    expect(newShared['x.bak']).toBeUndefined();
+    expect(files['kept.jsonl']).toBeDefined();
+    expect(newShared['kept.jsonl']).toBeDefined();
+  });
+
+  test('a rel that vanished from both sides without appearing in the plan is garbage-collected', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'cxsync-manifest-'));
+    const manifestPath = join(dir, 'manifest.json');
+    const dav = makeFakeDav();
+
+    const prevManifest = { files: { 'ghost.jsonl': { sha256: 'ghost-hash', local_mtime: 1, local_size: 1, remote_mtime: 1, remote_size: 1 } } };
+    const plan = { unchanged: [], to_upload: [], to_download: [], to_delete_local: [], to_delete_remote: [], conflicts: [] };
+
+    const { files } = await finalizeManifest({
+      manifestPath, machineId: 'm1', prevManifest,
+      localFiles: {}, remoteFiles: {}, // ghost.jsonl is gone from both sides, never mentioned in the plan
+      plan, result: { errors: [] }, sharedRemoteManifest: { 'ghost.jsonl': { sha256: 'ghost-hash', mtime: 1, size: 1 } },
+      codexHome: dir, davClient: dav,
+    });
+
+    expect(files['ghost.jsonl']).toBeUndefined();
+  });
+});

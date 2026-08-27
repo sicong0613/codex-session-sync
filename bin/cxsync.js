@@ -68,13 +68,13 @@ program
 
     log.info('Scanning local state and remote file list…');
     const dav = createWebDAVClient(cfg.webdav);
-    const { localFiles, remoteFiles } = await prepareSyncFileSets({
+    const { prevManifest, localFiles, remoteFiles } = await prepareSyncFileSets({
       codexHome: cfg.codex_home,
       davClient: dav,
       manifestPath: cfg.manifest_path,
     });
 
-    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
+    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg, prevManifestFiles: prevManifest?.files });
     console.log(JSON.stringify(plan, null, 2));
   });
 
@@ -107,7 +107,7 @@ program
       davClient: dav,
       manifestPath: cfg.manifest_path,
     });
-    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg });
+    const plan = buildSyncPlan({ localFiles, remoteFiles, config: cfg, prevManifestFiles: prevManifest?.files });
 
     if (opts.dryRun) {
       console.log('DRY RUN — plan:');
